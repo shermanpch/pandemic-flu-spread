@@ -137,30 +137,39 @@ class SimulationBatchRunner:
 
     def _aggregate_daily_stats(self) -> None:
         """Aggregate daily statistics across all runs and compute expected values."""
+
         # Determine the maximum number of days across all runs
         max_days = max(len(stats_collector.days) for stats_collector in self.stats)
+
+        # List of metric names to aggregate
+        metric_names = [
+            "susceptible",
+            "infected",
+            "infectious",
+            "recovered",
+            "dead",
+            "vaccination",
+            "masking",
+            "cumulative_vaccinated",
+            "cumulative_masked",
+            "vaccine_supply",
+        ]
 
         # Initialize daily aggregated data
         for day in range(max_days):
             day_data = {
-                "susceptible": [],
-                "infected": [],
-                "infectious": [],
-                "recovered": [],
-                "dead": [],
-                "vaccinated": [],
-                "masked": [],  # Track masked individuals for the new feature
-            }
+                metric: [] for metric in metric_names
+            }  # Initialize lists for each metric
+
+            # Aggregate data across all statistics collectors
             for sc in self.stats:
                 if day < len(sc.days):
-                    # Access counts from the respective lists
-                    day_data["susceptible"].append(sc.susceptible_counts[day])
-                    day_data["infected"].append(sc.infected_counts[day])
-                    day_data["infectious"].append(sc.infectious_counts[day])
-                    day_data["recovered"].append(sc.recovered_counts[day])
-                    day_data["dead"].append(sc.dead_counts[day])
-                    day_data["vaccinated"].append(sc.vaccinated_counts[day])
-                    day_data["masked"].append(sc.masked_counts[day])
+                    for metric in metric_names:
+                        # Dynamically get each metric's corresponding list using getattr
+                        metric_list = getattr(sc, f"{metric}_counts", None)
+                        if metric_list is not None:
+                            day_data[metric].append(metric_list[day])
+
             self.daily_aggregated_data.append(day_data)
 
         # Compute expected counts and standard deviations for each state
@@ -242,14 +251,7 @@ class SimulationBatchRunner:
             return
 
         days = range(len(self.daily_expected_counts))
-        states = [
-            "susceptible",
-            "infected",
-            "infectious",
-            "recovered",
-            "dead",
-            "vaccinated",
-        ]
+        states = self.daily_expected_counts[-1].keys()
 
         num_states = len(states)
         ncols = min(num_states, 3)
@@ -264,76 +266,23 @@ class SimulationBatchRunner:
             stds = np.array(stds)
 
             plt.subplot(nrows, ncols, idx)
-            plt.plot(days, means, label=f"{state.capitalize()}", color="blue")
-            plt.fill_between(days, means - stds, means + stds, color="blue", alpha=0.2)
+            plt.plot(
+                days,
+                means,
+                label=f"{state.replace('_', ' ').title()}",
+                color="blue",
+            )
+            plt.fill_between(
+                days,
+                np.clip(means - stds, a_min=0, a_max=None),
+                means + stds,
+                color="blue",
+                alpha=0.2,
+            )
             plt.xlabel("Day")
             plt.ylabel("Number of Individuals")
-            plt.title(f"Expected Number of {state.capitalize()} Over Time")
+            plt.title(f"Daily Expected Number of {state.replace('_', ' ').title()}")
             plt.grid(True)
-            plt.legend()
-
-        plt.tight_layout()
-        plt.show()
-
-    def plot_policy_over_time(self) -> None:
-        """Plot the expected number of masked and vaccinated individuals over time."""
-        if not self.daily_expected_counts:
-            logger.warning(
-                "No daily expected counts found. Please run the simulations first."
-            )
-            return
-
-        days = range(len(self.daily_expected_counts))
-
-        plt.figure(figsize=(12, 6))
-
-        # Plot for the expected number of masked individuals over time
-        plt.subplot(1, 2, 1)
-        masked_means = [
-            day_data.get("masked", {"mean": 0})["mean"]
-            for day_data in self.daily_expected_counts
-        ]
-        masked_stds = [
-            day_data.get("masked", {"std": 0})["std"]
-            for day_data in self.daily_expected_counts
-        ]
-
-        plt.plot(days, masked_means, label="Masked", color="green")
-        plt.fill_between(
-            days,
-            np.array(masked_means) - np.array(masked_stds),
-            np.array(masked_means) + np.array(masked_stds),
-            color="green",
-            alpha=0.2,
-        )
-        plt.xlabel("Day")
-        plt.ylabel("Number of Individuals")
-        plt.title("Expected Number of Masked Individuals Over Time")
-        plt.grid(True)
-        plt.legend()
-
-        # Plot for the expected number of vaccinated individuals over time
-        plt.subplot(1, 2, 2)
-        vaccinated_means = [
-            day_data["vaccinated"]["mean"] for day_data in self.daily_expected_counts
-        ]
-        vaccinated_stds = [
-            day_data["vaccinated"]["std"] for day_data in self.daily_expected_counts
-        ]
-
-        plt.plot(days, vaccinated_means, label="Vaccinated", color="blue")
-        plt.fill_between(
-            days,
-            np.array(vaccinated_means) - np.array(vaccinated_stds),
-            np.array(vaccinated_means) + np.array(vaccinated_stds),
-            color="blue",
-            alpha=0.2,
-        )
-        plt.xlabel("Day")
-        plt.ylabel("Count")
-        plt.title("Expected Supply of Vaccines Over Time")
-        plt.grid(True)
-        plt.legend()
 
         plt.tight_layout()
         plt.show()

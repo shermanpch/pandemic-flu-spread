@@ -8,17 +8,6 @@ from person import Person
 class StatisticsCollector:
     """
     Collects and manages statistics during the simulation run.
-
-    Attributes:
-        days (List[int]): List of day numbers.
-        susceptible_counts (List[int]): Number of susceptible individuals each day.
-        infected_counts (List[int]): Number of infected (not yet infectious) individuals each day.
-        infectious_counts (List[int]): Number of infectious individuals each day.
-        recovered_counts (List[int]): Number of recovered individuals each day.
-        dead_counts (List[int]): Number of dead individuals each day.
-        vaccinated_counts (List[int]): Number of vaccinated individuals each day.
-        total_infected_set (Set[int]): Set of unique individuals who have been infected.
-        peak_infections (int): Maximum number of infectious individuals at any point.
     """
 
     def __init__(self):
@@ -29,12 +18,20 @@ class StatisticsCollector:
         self.infectious_counts: List[int] = []
         self.recovered_counts: List[int] = []
         self.dead_counts: List[int] = []
-        self.vaccinated_counts: List[int] = []
-        self.masked_counts: List[int] = []
+        self.cumulative_vaccinated_counts: List[int] = []
+        self.cumulative_masked_counts: List[int] = []
+        self.vaccination_counts: List[int] = []
+        self.masking_counts: List[int] = []
+        self.vaccine_supply_counts: List[int] = []
         self.total_infected_set: Set[int] = set()
         self.peak_infections: int = 0
 
-    def record_day(self, day: int, population: List[Person]) -> None:
+    def record_day(
+        self,
+        day: int,
+        population: List[Person],
+        vaccine_supply: int,
+    ) -> None:
         """
         Record the statistics for the current day.
 
@@ -49,8 +46,9 @@ class StatisticsCollector:
             "infectious": 0,
             "recovered": 0,
             "dead": 0,
-            "vaccinated": 0,
-            "masked": 0,
+            "cumulative_vaccinated": 0,
+            "cumulative_masked": 0,
+            "vaccine_supply": vaccine_supply,
         }
 
         # Count individuals in each health state
@@ -62,10 +60,10 @@ class StatisticsCollector:
 
             # Check if the individual is vaccinated
             if person.vaccination_doses > 0:
-                daily_counts["vaccinated"] += 1
+                daily_counts["cumulative_vaccinated"] += 1
 
             if person.masked:
-                daily_counts["masked"] += 1
+                daily_counts["cumulative_masked"] += 1
 
             # Check if the individual should be added to the total infected set
             if state in ["infected", "infectious", "recovered", "dead"]:
@@ -78,8 +76,24 @@ class StatisticsCollector:
         self.infectious_counts.append(daily_counts["infectious"])
         self.recovered_counts.append(daily_counts["recovered"])
         self.dead_counts.append(daily_counts["dead"])
-        self.vaccinated_counts.append(daily_counts["vaccinated"])
-        self.masked_counts.append(daily_counts["masked"])
+        self.cumulative_vaccinated_counts.append(daily_counts["cumulative_vaccinated"])
+        self.cumulative_masked_counts.append(daily_counts["cumulative_masked"])
+        self.vaccine_supply_counts.append(daily_counts["vaccine_supply"])
+
+        # Calculate daily vaccinated and masked counts
+        if day == 0:
+            # First day: daily count equals cumulative count
+            self.vaccination_counts.append(daily_counts["cumulative_vaccinated"])
+            self.masking_counts.append(daily_counts["cumulative_masked"])
+        else:
+            # Subsequent days: calculate daily difference
+            self.vaccination_counts.append(
+                daily_counts["cumulative_vaccinated"]
+                - self.cumulative_vaccinated_counts[-2]
+            )
+            self.masking_counts.append(
+                daily_counts["cumulative_masked"] - self.cumulative_masked_counts[-2]
+            )
 
         # Update peak infections
         current_infections = daily_counts["infectious"]
@@ -119,7 +133,11 @@ class StatisticsCollector:
             "infectious": self.infectious_counts,
             "recovered": self.recovered_counts,
             "dead": self.dead_counts,
-            "vaccinated": self.vaccinated_counts,
+            "cumulative_vaccinated": self.cumulative_vaccinated_counts,
+            "cumulative_masked": self.cumulative_masked_counts,
+            "vaccination": self.vaccination_counts,
+            "masking": self.masking_counts,
+            "vaccine_supply": self.vaccine_supply_counts,
         }
 
         if metrics_to_plot is None:
@@ -127,7 +145,11 @@ class StatisticsCollector:
 
         for metric in metrics_to_plot:
             if metric in metric_map:
-                plt.plot(self.days, metric_map[metric], label=metric.capitalize())
+                plt.plot(
+                    self.days,
+                    metric_map[metric],
+                    label=metric.replace("_", " ").title(),
+                )
 
         plt.xlabel("Day")
         plt.ylabel("Number of Individuals")

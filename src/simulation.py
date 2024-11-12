@@ -41,7 +41,7 @@ class Simulation:
         mortality_rate: float = 0.01,
         mask_effectiveness: float = 0.5,
         partial_vaccine_effectiveness: float = 0.7,
-        full_vaccine_effectiveness: float = 0.3,
+        full_vaccine_effectiveness: float = 0.0,
         mask_policy: Optional[Callable[["Simulation", Person], None]] = None,
         dist_policy: Optional[Callable[["Simulation", Person], None]] = None,
         vac_policy: Optional[Callable[["Simulation"], None]] = None,
@@ -52,24 +52,37 @@ class Simulation:
         Initialize a new Simulation instance.
 
         Args:
-            env (simpy.Environment): The simulation environment.
+            env (simpy.Environment): The simulation environment that manages time and events.
             population_size (int): Total number of individuals in the simulation.
-            initial_infected (Union[int, float]): If int, the number of individuals initially infected.
-                                                  If float between 0 and 1, the fraction of the population initially infected.
-            infection_rate (float): Base infection probability per contact.
-            incubation_period (int): Number of days before becoming infectious.
+            initial_infected (Union[int, float]): Number or fraction of individuals initially infected.
+                If an integer, it represents the absolute number of individuals infected at the start.
+                If a float between 0 and 1, it specifies the fraction of the population to be initially infected.
+            infection_rate (float): Base probability of infection per contact (0 <= infection_rate <= 1).
+            incubation_period (int): Number of days from infection to becoming infectious.
             infectious_period (int): Number of days an individual remains infectious.
-            base_contacts (int): Number of contacts per day for non-social distancing individuals.
-            social_distancing_rate (float): Rate to reduce contacts for social distancing individuals.
-            mortality_rate (float): Probability of dying from the disease (0 <= mortality_rate <= 1).
-            mask_effectiveness (float): Reduction in infection probability due to mask usage (default is 0.5).
-            partial_vaccine_effectiveness (float): Reduction in infection probability for individuals with partial vaccination (default is 0.7).
-            full_vaccine_effectiveness (float): Reduction in infection probability for individuals with full vaccination (default is 0.3).
-            mask_policy (Optional[Callable]): Function implementing the mask-wearing policy.
-            dist_policy (Optional[Callable]): Function implementing the social distancing policy.
-            vac_policy (Optional[Callable]): Function implementing the vaccination strategy.
-            statistics_collector (Optional[StatisticsCollector]): Collects statistics during the simulation.
-            random_seed (Optional[int]): Seed for the random number generator.
+            base_contacts (int): Average number of contacts per day for individuals who are not social distancing.
+            social_distancing_rate (float): Multiplier to reduce daily contacts for social distancing individuals
+                (0 <= social_distancing_rate <= 1). A rate of 0.5 means half as many contacts.
+            mortality_rate (float): Probability of dying from the disease for infected individuals
+                (0 <= mortality_rate <= 1).
+            mask_effectiveness (float): Multiplier to reduce infection probability due to mask usage.
+                If a person wears a mask, the base infection rate is multiplied by this factor, reducing it.
+                For example, with a `mask_effectiveness` of 0.5, the infection rate is halved when a mask is worn.
+            partial_vaccine_effectiveness (float): Multiplier to reduce infection probability for individuals with one dose of the vaccine.
+                The infection rate is multiplied by this factor for partially vaccinated individuals.
+                For example, a value of 0.7 reduces the infection rate by 30%.
+            full_vaccine_effectiveness (float): Multiplier to reduce infection probability for individuals with full vaccination (two or more doses).
+                The infection rate is multiplied by this factor for fully vaccinated individuals.
+                For example, a value of 0.0 effectively makes fully vaccinated individuals immune to infection.
+            mask_policy (Optional[Callable]): Function that implements the mask-wearing policy for individuals.
+                This function is called on each person daily to determine if they should wear a mask.
+            dist_policy (Optional[Callable]): Function that implements the social distancing policy for individuals.
+                This function is called on each person daily to determine their social distancing behavior.
+            vac_policy (Optional[Callable]): Function that implements the vaccination strategy for the simulation.
+                This function is called daily to determine which individuals should receive vaccines.
+            statistics_collector (Optional[StatisticsCollector]): Collects and manages statistical data during the simulation.
+                This is used to record information on the states of individuals and the progress of the disease.
+            random_seed (Optional[int]): Seed for the random number generator to ensure reproducibility of the simulation.
         """
         # Validation checks
         if population_size <= 0:
@@ -137,9 +150,13 @@ class Simulation:
     def run(self) -> Generator[simpy.events.Event, None, None]:
         """Run the simulation, advancing one day at a time."""
         while True:
-            self.simulate_day()
+            vaccine_supply = self.simulate_day()
             if self.statistics_collector is not None:
-                self.statistics_collector.record_day(self.day, self.population)
+                self.statistics_collector.record_day(
+                    self.day,
+                    self.population,
+                    vaccine_supply,
+                )
 
             # Check if there are any infected or infectious individuals left
             active_infections = any(
@@ -160,8 +177,9 @@ class Simulation:
         and simulating interactions between individuals.
         """
         self.update_health_statuses()
-        self.apply_policies()
+        vaccine_supply = self.apply_policies()
         self.simulate_interactions()
+        return vaccine_supply
 
     def update_health_statuses(self) -> None:
         """Update the health status of each person."""
@@ -181,7 +199,8 @@ class Simulation:
             if self.dist_policy:
                 self.dist_policy(self, person)
         if self.vac_policy:
-            self.vac_policy(self)
+            available_doses = self.vac_policy(self)
+        return available_doses
 
     def simulate_interactions(self) -> None:
         """Simulate interactions between individuals and possible disease transmission."""
@@ -216,12 +235,18 @@ class Simulation:
         """
         Apply mask effectiveness to reduce the base infection rate.
 
+        Masks reduce the infection rate by a fixed percentage based on their effectiveness.
+        The infection rate is multiplied by `mask_effectiveness` for masked individuals,
+        thereby lowering the likelihood of transmission.
+
         Args:
             base_rate (float): The initial infection rate before adjustments.
             person (Person): The individual for whom the mask effect is being applied.
 
         Returns:
-            float: The adjusted infection rate considering mask effectiveness.
+            float: The adjusted infection rate considering mask effectiveness. If the person
+                is masked, the infection rate will be `base_rate * mask_effectiveness`.
+                Otherwise, it will remain as `base_rate`.
         """
         if person.masked:
             return base_rate * self.mask_effectiveness
@@ -231,12 +256,19 @@ class Simulation:
         """
         Apply vaccination effectiveness to reduce the base infection rate.
 
+        The infection rate is multiplied by either `partial_vaccine_effectiveness` or
+        `full_vaccine_effectiveness` based on the vaccination status of the individual.
+        This effectively reduces the infection rate, thereby decreasing the chance of transmission.
+
         Args:
             base_rate (float): The initial infection rate before adjustments.
             person (Person): The individual for whom the vaccination effect is being applied.
 
         Returns:
-            float: The adjusted infection rate considering vaccination status.
+            float: The adjusted infection rate considering vaccination status. If the person
+                has received one dose, the infection rate is `base_rate * partial_vaccine_effectiveness`.
+                If the person has received two or more doses, the rate is `base_rate * full_vaccine_effectiveness`.
+                If unvaccinated, the rate remains as `base_rate`.
         """
         if person.vaccination_doses == 1:
             return base_rate * self.partial_vaccine_effectiveness
