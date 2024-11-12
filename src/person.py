@@ -54,6 +54,15 @@ class Person:
         """Check if the person is dead."""
         return self.state == HealthState.DEAD
 
+    def get_health_state(self) -> str:
+        """
+        Return the health state of the person.
+
+        Returns:
+            str: The health state of the person as a string.
+        """
+        return self.state.value
+
     def infected(self) -> None:
         """Transition the person to the 'infected' state if susceptible."""
         if self.is_susceptible:

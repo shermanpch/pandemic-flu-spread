@@ -21,8 +21,8 @@ class Simulation:
         social_distancing_rate (float): Rate to reduce contacts for social distancing individuals.
         mortality_rate (float): Probability of dying from the disease (0 <= mortality_rate <= 1).
         mask_policy (Optional[Callable[['Simulation', Person], None]]): Function implementing the mask-wearing policy.
-        distancing_policy (Optional[Callable[['Simulation', Person], None]]): Function implementing the social distancing policy.
-        vaccination_policy (Optional[Callable[['Simulation'], None]]): Function implementing the vaccination strategy.
+        dist_policy (Optional[Callable[['Simulation', Person], None]]): Function implementing the social distancing policy.
+        vac_policy (Optional[Callable[['Simulation'], None]]): Function implementing the vaccination strategy.
         statistics_collector (Optional[StatisticsCollector]): Collects statistics during the simulation.
         random_seed (Optional[int]): Seed for the random number generator.
         day (int): The current day in the simulation.
@@ -39,9 +39,12 @@ class Simulation:
         base_contacts: int,
         social_distancing_rate: float,
         mortality_rate: float = 0.01,
+        mask_effectiveness: float = 0.5,
+        partial_vaccine_effectiveness: float = 0.7,
+        full_vaccine_effectiveness: float = 0.3,
         mask_policy: Optional[Callable[["Simulation", Person], None]] = None,
-        distancing_policy: Optional[Callable[["Simulation", Person], None]] = None,
-        vaccination_policy: Optional[Callable[["Simulation"], None]] = None,
+        dist_policy: Optional[Callable[["Simulation", Person], None]] = None,
+        vac_policy: Optional[Callable[["Simulation"], None]] = None,
         statistics_collector: Optional[StatisticsCollector] = None,
         random_seed: Optional[int] = None,
     ):
@@ -59,9 +62,12 @@ class Simulation:
             base_contacts (int): Number of contacts per day for non-social distancing individuals.
             social_distancing_rate (float): Rate to reduce contacts for social distancing individuals.
             mortality_rate (float): Probability of dying from the disease (0 <= mortality_rate <= 1).
+            mask_effectiveness (float): Reduction in infection probability due to mask usage (default is 0.5).
+            partial_vaccine_effectiveness (float): Reduction in infection probability for individuals with partial vaccination (default is 0.7).
+            full_vaccine_effectiveness (float): Reduction in infection probability for individuals with full vaccination (default is 0.3).
             mask_policy (Optional[Callable]): Function implementing the mask-wearing policy.
-            distancing_policy (Optional[Callable]): Function implementing the social distancing policy.
-            vaccination_policy (Optional[Callable]): Function implementing the vaccination strategy.
+            dist_policy (Optional[Callable]): Function implementing the social distancing policy.
+            vac_policy (Optional[Callable]): Function implementing the vaccination strategy.
             statistics_collector (Optional[StatisticsCollector]): Collects statistics during the simulation.
             random_seed (Optional[int]): Seed for the random number generator.
         """
@@ -104,13 +110,12 @@ class Simulation:
         self.base_contacts: int = base_contacts
         self.social_distancing_rate: float = social_distancing_rate
         self.mortality_rate: float = mortality_rate
+        self.mask_effectiveness: float = mask_effectiveness
+        self.partial_vaccine_effectiveness: float = partial_vaccine_effectiveness
+        self.full_vaccine_effectiveness: float = full_vaccine_effectiveness
         self.mask_policy: Optional[Callable[["Simulation", Person], None]] = mask_policy
-        self.distancing_policy: Optional[Callable[["Simulation", Person], None]] = (
-            distancing_policy
-        )
-        self.vaccination_policy: Optional[Callable[["Simulation"], None]] = (
-            vaccination_policy
-        )
+        self.dist_policy: Optional[Callable[["Simulation", Person], None]] = dist_policy
+        self.vac_policy: Optional[Callable[["Simulation"], None]] = vac_policy
         self.statistics_collector: Optional[StatisticsCollector] = statistics_collector
         self.day: int = 0
 
@@ -148,7 +153,12 @@ class Simulation:
             yield self.env.timeout(1)  # Proceed to the next day
 
     def simulate_day(self) -> None:
-        """Simulate the events of a single day."""
+        """
+        Simulate the events of a single day.
+
+        This includes updating health statuses, applying policies (mask, distancing, vaccination),
+        and simulating interactions between individuals.
+        """
         self.update_health_statuses()
         self.apply_policies()
         self.simulate_interactions()
@@ -168,10 +178,10 @@ class Simulation:
         for person in self.population:
             if self.mask_policy:
                 self.mask_policy(self, person)
-            if self.distancing_policy:
-                self.distancing_policy(self, person)
-        if self.vaccination_policy:
-            self.vaccination_policy(self)
+            if self.dist_policy:
+                self.dist_policy(self, person)
+        if self.vac_policy:
+            self.vac_policy(self)
 
     def simulate_interactions(self) -> None:
         """Simulate interactions between individuals and possible disease transmission."""
@@ -202,6 +212,38 @@ class Simulation:
                 if self.random.random() < infection_chance:
                     susceptible_person.infected()
 
+    def apply_mask_effect(self, base_rate: float, person: Person) -> float:
+        """
+        Apply mask effectiveness to reduce the base infection rate.
+
+        Args:
+            base_rate (float): The initial infection rate before adjustments.
+            person (Person): The individual for whom the mask effect is being applied.
+
+        Returns:
+            float: The adjusted infection rate considering mask effectiveness.
+        """
+        if person.masked:
+            return base_rate * self.mask_effectiveness
+        return base_rate
+
+    def apply_vaccine_effect(self, base_rate: float, person: Person) -> float:
+        """
+        Apply vaccination effectiveness to reduce the base infection rate.
+
+        Args:
+            base_rate (float): The initial infection rate before adjustments.
+            person (Person): The individual for whom the vaccination effect is being applied.
+
+        Returns:
+            float: The adjusted infection rate considering vaccination status.
+        """
+        if person.vaccination_doses == 1:
+            return base_rate * self.partial_vaccine_effectiveness
+        elif person.vaccination_doses >= 2:
+            return base_rate * self.full_vaccine_effectiveness
+        return base_rate
+
     def calculate_infection_chance(
         self,
         infectious_person: Person,
@@ -210,27 +252,18 @@ class Simulation:
         """
         Calculate the probability of infection during an interaction.
 
+        This method calculates the infection chance based on base infection rate,
+        mask effectiveness, and vaccination effectiveness of the individuals involved.
+
         Args:
             infectious_person (Person): The infectious individual.
             susceptible_person (Person): The susceptible individual.
 
         Returns:
-            float: The adjusted infection probability.
+            float: The adjusted infection probability, ensuring that it does not exceed 1.0.
         """
         base_rate = self.infection_rate
-
-        # Adjust for masks
-        if infectious_person.masked:
-            base_rate *= 0.5  # Infectious person wearing a mask
-        if susceptible_person.masked:
-            base_rate *= 0.5  # Susceptible person wearing a mask
-
-        # Adjust for vaccination status
-        if susceptible_person.vaccination_doses == 1:
-            base_rate *= 0.7  # Partial immunity
-        elif susceptible_person.vaccination_doses >= 2:
-            base_rate *= 0.3  # Higher immunity
-
-        # Ensure the infection chance does not exceed 1
-        infection_chance = min(base_rate, 1.0)
-        return infection_chance
+        base_rate = self.apply_mask_effect(base_rate, infectious_person)
+        base_rate = self.apply_mask_effect(base_rate, susceptible_person)
+        base_rate = self.apply_vaccine_effect(base_rate, susceptible_person)
+        return min(base_rate, 1.0)
