@@ -30,6 +30,7 @@ class StatisticsCollector:
         self.recovered_counts: List[int] = []
         self.dead_counts: List[int] = []
         self.vaccinated_counts: List[int] = []
+        self.masked_counts: List[int] = []
         self.total_infected_set: Set[int] = set()
         self.peak_infections: int = 0
 
@@ -41,56 +42,50 @@ class StatisticsCollector:
             day (int): The current day number.
             population (List[Person]): The list of all individuals in the simulation.
         """
-        # Count the number of individuals in each state
-        susceptible = sum(1 for person in population if person.is_susceptible)
-        infected = sum(1 for person in population if person.is_infected)
-        infectious = sum(1 for person in population if person.is_infectious)
-        recovered = sum(1 for person in population if person.is_recovered)
-        dead = sum(1 for person in population if person.is_dead)
-        vaccinated = sum(1 for person in population if person.vaccination_doses > 0)
-
-        # Append the counts to the lists
-        self.days.append(day)
-        self.susceptible_counts.append(susceptible)
-        self.infected_counts.append(infected)
-        self.infectious_counts.append(infectious)
-        self.recovered_counts.append(recovered)
-        self.dead_counts.append(dead)
-        self.vaccinated_counts.append(vaccinated)
-
-        # Update the set of total infected individuals
-        for person in population:
-            if (
-                person.is_infected
-                or person.is_infectious
-                or person.is_recovered
-                or person.is_dead
-            ):
-                self.total_infected_set.add(person.id)
-
-        # Update peak infections
-        current_infections = infectious
-        if current_infections > self.peak_infections:
-            self.peak_infections = current_infections
-
-    def get_data(self) -> Dict[str, List[int]]:
-        """
-        Return the collected data as a dictionary.
-
-        Returns:
-            Dict[str, List[int]]: A dictionary containing the lists of daily counts.
-        """
-        return {
-            "days": self.days,
-            "susceptible": self.susceptible_counts,
-            "infected": self.infected_counts,
-            "infectious": self.infectious_counts,
-            "recovered": self.recovered_counts,
-            "dead": self.dead_counts,
-            "vaccinated": self.vaccinated_counts,
+        # Initialize counts
+        daily_counts = {
+            "susceptible": 0,
+            "infected": 0,
+            "infectious": 0,
+            "recovered": 0,
+            "dead": 0,
+            "vaccinated": 0,
+            "masked": 0,
         }
 
-    def get_final_data(self) -> Dict[str, int]:
+        # Count individuals in each health state
+        for person in population:
+            state = person.get_health_state()
+
+            if state in daily_counts:
+                daily_counts[state] += 1
+
+            # Check if the individual is vaccinated
+            if person.vaccination_doses > 0:
+                daily_counts["vaccinated"] += 1
+
+            if person.masked:
+                daily_counts["masked"] += 1
+
+            # Check if the individual should be added to the total infected set
+            if state in ["infected", "infectious", "recovered", "dead"]:
+                self.total_infected_set.add(person.id)
+
+        # Update the class attributes with counts
+        self.days.append(day)
+        self.susceptible_counts.append(daily_counts["susceptible"])
+        self.infected_counts.append(daily_counts["infected"])
+        self.infectious_counts.append(daily_counts["infectious"])
+        self.recovered_counts.append(daily_counts["recovered"])
+        self.dead_counts.append(daily_counts["dead"])
+        self.vaccinated_counts.append(daily_counts["vaccinated"])
+        self.masked_counts.append(daily_counts["masked"])
+
+        # Update peak infections
+        current_infections = daily_counts["infectious"]
+        self.peak_infections = max(self.peak_infections, current_infections)
+
+    def get_outcome(self) -> Dict[str, int]:
         """
         Extract key metrics at the end of the simulation.
 
@@ -109,17 +104,31 @@ class StatisticsCollector:
             "total_days": total_days,
         }
 
-    def plot(self) -> None:
+    def plot(self, metrics_to_plot: List[str] = None) -> None:
         """
         Plot the collected data over time using matplotlib.
+
+        Args:
+            metrics_to_plot (List[str], optional): List of specific metrics to plot (e.g., ["susceptible", "infected"]).
         """
         plt.figure(figsize=(10, 6))
-        plt.plot(self.days, self.susceptible_counts, label="Susceptible")
-        plt.plot(self.days, self.infected_counts, label="Infected")
-        plt.plot(self.days, self.infectious_counts, label="Infectious")
-        plt.plot(self.days, self.recovered_counts, label="Recovered")
-        plt.plot(self.days, self.dead_counts, label="Dead")
-        plt.plot(self.days, self.vaccinated_counts, label="Vaccinated")
+
+        metric_map = {
+            "susceptible": self.susceptible_counts,
+            "infected": self.infected_counts,
+            "infectious": self.infectious_counts,
+            "recovered": self.recovered_counts,
+            "dead": self.dead_counts,
+            "vaccinated": self.vaccinated_counts,
+        }
+
+        if metrics_to_plot is None:
+            metrics_to_plot = metric_map.keys()
+
+        for metric in metrics_to_plot:
+            if metric in metric_map:
+                plt.plot(self.days, metric_map[metric], label=metric.capitalize())
+
         plt.xlabel("Day")
         plt.ylabel("Number of Individuals")
         plt.title("Disease Progression Over Time")

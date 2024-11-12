@@ -54,10 +54,10 @@ def run_single_simulation(args):
     sim.env.run()
 
     # Collect key metrics from this run
-    final_data = stats_collector.get_final_data()
+    outcome = stats_collector.get_outcome()
 
     return {
-        "final_data": final_data,
+        "outcome": outcome,
         "stats_collector": stats_collector,
         "run_number": run_number,
     }
@@ -68,7 +68,7 @@ class SimulationBatchRunner:
     Runs multiple simulations and aggregates the results for statistical analysis.
 
     Attributes:
-        num_runs (int): Number of simulation runs to perform.
+        replications (int): Number of simulation runs to perform.
         simulation_params (dict): Parameters for the simulations.
         stats (List[StatisticsCollector]): Statistics from each simulation run.
         outcomes (List[Dict[str, int]]): Key metrics from each run.
@@ -77,15 +77,15 @@ class SimulationBatchRunner:
         daily_expected_counts (List[Dict[str, Dict[str, float]]]): Expected counts per day.
     """
 
-    def __init__(self, num_runs: int, simulation_params: dict):
+    def __init__(self, replications: int, simulation_params: dict):
         """
         Initialize the SimulationBatchRunner.
 
         Args:
-            num_runs (int): Number of simulation runs to perform.
+            replications (int): Number of simulation runs to perform.
             simulation_params (dict): Parameters for the simulations.
         """
-        self.num_runs = num_runs
+        self.replications = replications
         self.simulation_params = simulation_params
         self.stats: List[StatisticsCollector] = []
         self.outcomes: List[Dict[str, int]] = []
@@ -95,46 +95,45 @@ class SimulationBatchRunner:
 
     def run(self) -> None:
         """Run all simulations and aggregate the results using multiprocessing."""
+        logger.info("Starting batch run of simulations.")
         # Prepare arguments for each simulation run
         simulation_args = [
-            (self.simulation_params, run_number) for run_number in range(self.num_runs)
+            (self.simulation_params, run_number)
+            for run_number in range(self.replications)
         ]
 
-        # Use multiprocessing to run simulations in parallel
         with multiprocessing.Pool() as pool:
-            # Map the function over the arguments
-            results = pool.map(run_single_simulation, simulation_args)
+            try:
+                results = pool.map(run_single_simulation, simulation_args)
+            except Exception as e:
+                logger.error(f"Error occurred during simulation runs: {e}")
 
-        # Process the results
+        logger.info("All simulations completed. Processing results...")
+
         for result in results:
-            final_data = result["final_data"]
+            outcome = result["outcome"]
             stats_collector = result["stats_collector"]
             run_number = result["run_number"]
 
             self.stats.append(stats_collector)
-            self.outcomes.append(final_data)
-            logger.debug(f"Simulation {run_number + 1}/{self.num_runs} completed.")
+            self.outcomes.append(outcome)
+            logger.debug(f"Simulation {run_number + 1}/{self.replications} completed.")
 
-        # After all runs, aggregate the results
         self._aggregate_results()
-
-        # Aggregate daily statistics
         self._aggregate_daily_stats()
+        logger.info("Results aggregation completed.")
 
     def _aggregate_results(self) -> None:
-        """Aggregate key metrics across all runs."""
-        total_infections = [outcome["total_infections"] for outcome in self.outcomes]
-        total_deaths = [outcome["total_deaths"] for outcome in self.outcomes]
-        peak_infections = [outcome["peak_infections"] for outcome in self.outcomes]
-        total_days = [outcome["total_days"] for outcome in self.outcomes]
+        """Aggregate key metrics across all runs by processing individual statistics."""
+        self._aggregate_metric("total_infections")
+        self._aggregate_metric("total_deaths")
+        self._aggregate_metric("peak_infections")
+        self._aggregate_metric("total_days")
 
-        # Store aggregated results
-        self.aggregated_data = {
-            "total_infections": total_infections,
-            "total_deaths": total_deaths,
-            "peak_infections": peak_infections,
-            "total_days": total_days,
-        }
+    def _aggregate_metric(self, metric: str) -> None:
+        """Helper method to aggregate a specific metric."""
+        metric_values = [outcome[metric] for outcome in self.outcomes]
+        self.aggregated_data[metric] = metric_values
 
     def _aggregate_daily_stats(self) -> None:
         """Aggregate daily statistics across all runs and compute expected values."""
@@ -150,22 +149,18 @@ class SimulationBatchRunner:
                 "recovered": [],
                 "dead": [],
                 "vaccinated": [],
+                "masked": [],  # Track masked individuals for the new feature
             }
-            for stats_collector in self.stats:
-                if day < len(stats_collector.days):
+            for sc in self.stats:
+                if day < len(sc.days):
                     # Access counts from the respective lists
-                    day_data["susceptible"].append(
-                        stats_collector.susceptible_counts[day]
-                    )
-                    day_data["infected"].append(stats_collector.infected_counts[day])
-                    day_data["infectious"].append(
-                        stats_collector.infectious_counts[day]
-                    )
-                    day_data["recovered"].append(stats_collector.recovered_counts[day])
-                    day_data["dead"].append(stats_collector.dead_counts[day])
-                    day_data["vaccinated"].append(
-                        stats_collector.vaccinated_counts[day]
-                    )
+                    day_data["susceptible"].append(sc.susceptible_counts[day])
+                    day_data["infected"].append(sc.infected_counts[day])
+                    day_data["infectious"].append(sc.infectious_counts[day])
+                    day_data["recovered"].append(sc.recovered_counts[day])
+                    day_data["dead"].append(sc.dead_counts[day])
+                    day_data["vaccinated"].append(sc.vaccinated_counts[day])
+                    day_data["masked"].append(sc.masked_counts[day])
             self.daily_aggregated_data.append(day_data)
 
         # Compute expected counts and standard deviations for each state
@@ -181,51 +176,48 @@ class SimulationBatchRunner:
                     expected_counts[state] = {"mean": 0, "std": 0}
             self.daily_expected_counts.append(expected_counts)
 
-    def plot_histograms(self) -> None:
-        """Plot histograms of the aggregated metrics with statistical summaries."""
-        if not self.aggregated_data:
-            logger.warning("No statistics collected. Please run the simulations first.")
+    def plot_histograms(
+        self,
+        metrics_to_plot: List[str] = None,
+        ncols: int = 3,
+        color: str = "skyblue",
+    ) -> None:
+        """
+        Plot histograms of the aggregated metrics with statistical summaries.
 
-            return
-
-        # Create a mapping of metric names to their data with readable labels
-        metrics = {
-            " ".join(key.title().split("_")): values
-            for key, values in self.aggregated_data.items()
-        }
-
+        Args:
+            metrics_to_plot (List[str], optional): The metrics to plot. If None, plot all available metrics.
+            ncols (int): Number of columns in the plot grid.
+            color (str): Color of the histogram bars.
+        """
+        metrics = metrics_to_plot if metrics_to_plot else self.aggregated_data.keys()
         num_metrics = len(metrics)
 
-        # Determine the number of rows and columns for subplots
-        ncols = min(num_metrics, 3)  # Limit the number of columns to 3 for readability
         nrows = math.ceil(num_metrics / ncols)
-
-        # Adjust the figure size accordingly
         plt.figure(figsize=(6 * ncols, 6 * nrows))
 
-        for idx, (metric_name, values) in enumerate(metrics.items(), 1):
-            plt.subplot(nrows, ncols, idx)
-            plt.hist(values, bins=10, color="skyblue", edgecolor="black")
-            plt.xlabel(metric_name)
-            plt.ylabel("Frequency")
-            plt.title(f"Histogram of {metric_name}")
+        for idx, metric in enumerate(metrics, 1):
+            values = self.aggregated_data.get(metric, [])
+            if not values:
+                continue  # Skip if no data is available
 
-            # Calculate statistical summaries
+            plt.subplot(nrows, ncols, idx)
+            plt.hist(values, bins=10, color=color, edgecolor="black")
+            plt.xlabel(metric.replace("_", " ").title())
+            plt.ylabel("Frequency")
+            plt.title(f"Histogram of {metric.replace('_', ' ').title()}")
+
             mean_value = np.mean(values)
             median_value = np.median(values)
             std_dev = np.std(values, ddof=1)
-            conf_interval = (
-                1.96 * std_dev / np.sqrt(len(values))
-            )  # 95% confidence interval
+            conf_interval = 1.96 * std_dev / np.sqrt(len(values))
 
-            # Add text annotations on the plot
             stats_text = (
                 f"Mean: {mean_value:.2f}\n"
                 f"Median: {median_value:.2f}\n"
                 f"Std Dev: {std_dev:.2f}\n"
                 f"95% CI: ±{conf_interval:.2f}"
             )
-            # Position the text box in the upper right corner
             props = dict(boxstyle="round", facecolor="white", alpha=0.8)
             plt.text(
                 0.95,
@@ -241,7 +233,7 @@ class SimulationBatchRunner:
         plt.tight_layout()
         plt.show()
 
-    def plot_state_histograms(self) -> None:
+    def plot_state_over_time(self) -> None:
         """Plot the mean number of individuals in each state over time, each state in a separate subplot."""
         if not self.daily_expected_counts:
             logger.warning(
@@ -279,6 +271,69 @@ class SimulationBatchRunner:
             plt.title(f"Expected Number of {state.capitalize()} Over Time")
             plt.grid(True)
             plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+    def plot_policy_over_time(self) -> None:
+        """Plot the expected number of masked and vaccinated individuals over time."""
+        if not self.daily_expected_counts:
+            logger.warning(
+                "No daily expected counts found. Please run the simulations first."
+            )
+            return
+
+        days = range(len(self.daily_expected_counts))
+
+        plt.figure(figsize=(12, 6))
+
+        # Plot for the expected number of masked individuals over time
+        plt.subplot(1, 2, 1)
+        masked_means = [
+            day_data.get("masked", {"mean": 0})["mean"]
+            for day_data in self.daily_expected_counts
+        ]
+        masked_stds = [
+            day_data.get("masked", {"std": 0})["std"]
+            for day_data in self.daily_expected_counts
+        ]
+
+        plt.plot(days, masked_means, label="Masked", color="green")
+        plt.fill_between(
+            days,
+            np.array(masked_means) - np.array(masked_stds),
+            np.array(masked_means) + np.array(masked_stds),
+            color="green",
+            alpha=0.2,
+        )
+        plt.xlabel("Day")
+        plt.ylabel("Number of Individuals")
+        plt.title("Expected Number of Masked Individuals Over Time")
+        plt.grid(True)
+        plt.legend()
+
+        # Plot for the expected number of vaccinated individuals over time
+        plt.subplot(1, 2, 2)
+        vaccinated_means = [
+            day_data["vaccinated"]["mean"] for day_data in self.daily_expected_counts
+        ]
+        vaccinated_stds = [
+            day_data["vaccinated"]["std"] for day_data in self.daily_expected_counts
+        ]
+
+        plt.plot(days, vaccinated_means, label="Vaccinated", color="blue")
+        plt.fill_between(
+            days,
+            np.array(vaccinated_means) - np.array(vaccinated_stds),
+            np.array(vaccinated_means) + np.array(vaccinated_stds),
+            color="blue",
+            alpha=0.2,
+        )
+        plt.xlabel("Day")
+        plt.ylabel("Count")
+        plt.title("Expected Supply of Vaccines Over Time")
+        plt.grid(True)
+        plt.legend()
 
         plt.tight_layout()
         plt.show()

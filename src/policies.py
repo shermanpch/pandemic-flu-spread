@@ -1,178 +1,144 @@
-from typing import Callable
+import logging
+from math import exp
 
 from person import Person
 from simulation import Simulation
 
+# Configure logging for policy actions
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-def mask_policy(simulation: Simulation, person: Person) -> None:
+
+import logging
+
+from person import Person
+from simulation import Simulation
+
+# Configure logging for policy actions
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+# Mask Policy (Module Level)
+def mask_policy(simulation: Simulation, person: Person, start_day: int) -> None:
     """
     A policy function to determine if a person should wear a mask.
 
     Args:
         simulation (Simulation): The simulation instance.
         person (Person): The person to potentially apply the mask policy to.
+        start_day (int): The day on which the mask policy starts.
     """
-    # Example policy: After day 10, everyone starts wearing masks
-    if simulation.day >= 10 and not person.masked:
+    if simulation.day >= start_day and not person.masked:
         person.apply_mask()
+        logger.debug(
+            f"Person {person.id} has started wearing a mask on day {simulation.day}."
+        )
 
 
-def vulnerable_distancing_policy(simulation: Simulation, person: Person) -> None:
-    """
-    A policy function to determine if a person should practice social distancing.
-
-    Args:
-        simulation (Simulation): The simulation instance.
-        person (Person): The person to potentially apply the social distancing policy to.
-    """
-    # Example policy: Vulnerable individuals start social distancing
-    # For simplicity, let's assume individuals with ID < 20 are vulnerable
-    if person.id < 20 and not person.social_distancing:
-        person.start_social_distancing()
-
-
-def general_distancing_policy(simulation: Simulation, person: Person) -> None:
+# Social Distancing Policy (Module Level)
+def social_distancing_policy(
+    simulation: Simulation, person: Person, start_day: int
+) -> None:
     """
     A policy function where everyone practices social distancing after a certain day.
 
     Args:
         simulation (Simulation): The simulation instance.
         person (Person): The person to potentially apply the social distancing policy to.
+        start_day (int): The day on which the social distancing policy starts.
     """
-    # Example policy: After day 15, everyone practices social distancing
-    if simulation.day >= 15 and not person.social_distancing:
+    if simulation.day >= start_day and not person.social_distancing:
         person.start_social_distancing()
-
-
-def basic_vaccination_policy(simulation: Simulation) -> None:
-    """
-    A policy function to vaccinate a certain number of individuals each day.
-
-    Args:
-        simulation (Simulation): The simulation instance.
-    """
-    # Example policy: Vaccinate 10 susceptible individuals per day
-    unvaccinated = [
-        p
-        for p in simulation.population
-        if p.vaccination_doses == 0 and p.is_susceptible
-    ]
-    num_to_vaccinate = min(10, len(unvaccinated))
-    to_vaccinate = simulation.random.sample(unvaccinated, k=num_to_vaccinate)
-    for person in to_vaccinate:
-        person.vaccinate()
-
-
-def targeted_vaccination_policy(simulation: Simulation) -> None:
-    """
-    A policy function to prioritize vaccination for vulnerable individuals.
-
-    Args:
-        simulation (Simulation): The simulation instance.
-    """
-    # Example policy: Vaccinate vulnerable individuals first
-    # Vulnerable individuals have ID < 20
-    unvaccinated_vulnerable = [
-        p
-        for p in simulation.population
-        if p.vaccination_doses == 0 and p.is_susceptible and p.id < 20
-    ]
-    if unvaccinated_vulnerable:
-        num_to_vaccinate = min(10, len(unvaccinated_vulnerable))
-        to_vaccinate = simulation.random.sample(
-            unvaccinated_vulnerable, k=num_to_vaccinate
+        logger.debug(
+            f"Person {person.id} started social distancing on day {simulation.day}."
         )
-    else:
-        # If no vulnerable individuals left, vaccinate others
-        unvaccinated = [
-            p
-            for p in simulation.population
-            if p.vaccination_doses == 0 and p.is_susceptible
-        ]
-        num_to_vaccinate = min(10, len(unvaccinated))
-        to_vaccinate = simulation.random.sample(unvaccinated, k=num_to_vaccinate)
-    for person in to_vaccinate:
-        person.vaccinate()
 
 
-def compliance_mask_policy(
+# Vaccination Policy (Module Level)
+def supply_constrained_vaccination_policy(
     simulation: Simulation,
-    person: Person,
-    compliance_rate: float,
+    initial_supply_rate: float,
+    max_supply_rate: float,
+    growth_type: str = "logistic",
 ) -> None:
     """
-    A policy function where individuals wear masks based on a compliance rate.
+    A policy function to simulate a vaccination strategy with limited vaccine supply.
 
     Args:
         simulation (Simulation): The simulation instance.
-        person (Person): The person to potentially apply the mask policy to.
-        compliance_rate (float): The probability that a person will wear a mask.
+        initial_supply_rate (float): Starting supply as a fraction of the population.
+        max_supply_rate (float): Maximum daily supply as a fraction of the population.
+        daily_increase_rate (float): Rate at which supply increases each day as a fraction of the population.
+        growth_type (str): Type of growth ('linear', 'exponential', 'logistic').
     """
-    if not person.masked and simulation.random.random() < compliance_rate:
-        person.apply_mask()
+    population_size = len(simulation.population)
+    available_doses = get_daily_vaccine_supply(
+        day=simulation.day,
+        population_size=population_size,
+        initial_supply_rate=initial_supply_rate,
+        max_supply_rate=max_supply_rate,
+        growth_type=growth_type,
+    )
 
-
-def time_based_vaccination_policy(
-    simulation: Simulation,
-    start_day: int,
-    daily_vaccinations: int,
-) -> None:
-    """
-    A policy function to start vaccinations after a certain day.
-
-    Args:
-        simulation (Simulation): The simulation instance.
-        start_day (int): The day vaccinations begin.
-        daily_vaccinations (int): Number of individuals to vaccinate each day.
-    """
-    if simulation.day >= start_day:
+    if available_doses > 0:
         unvaccinated = [
             p
             for p in simulation.population
-            if p.vaccination_doses == 0 and p.is_susceptible
+            if p.is_susceptible and p.vaccination_doses == 0
         ]
-        num_to_vaccinate = min(daily_vaccinations, len(unvaccinated))
+        num_to_vaccinate = min(available_doses, len(unvaccinated))
         to_vaccinate = simulation.random.sample(unvaccinated, k=num_to_vaccinate)
+
         for person in to_vaccinate:
             person.vaccinate()
+            logger.debug(
+                f"Person {person.id} vaccinated on day {simulation.day} with available doses."
+            )
 
 
-def custom_mask_policy_factory(start_day: int) -> Callable[[Simulation, Person], None]:
+def get_daily_vaccine_supply(
+    day: int,
+    population_size: int,
+    initial_supply_rate: float = 0.01,
+    max_supply_rate: float = 0.15,
+    growth_type: str = "logistic",
+):
     """
-    Factory function to create a custom mask policy starting on a specific day.
+    Calculate the vaccine supply for a given day based on a specified growth model.
 
     Args:
-        start_day (int): The day the mask policy starts.
+        day (int): The current day in the simulation.
+        population_size (int): The total population size of the simulation.
+        initial_supply_rate (float): Starting supply as a fraction of the population.
+        max_supply_rate (float): Maximum daily supply as a fraction of the population.
+        growth_type (str): Type of growth ('linear', 'exponential', 'logistic').
 
     Returns:
-        Callable[[Simulation, Person], None]: The mask policy function.
+        int: The number of doses available for the given day.
     """
+    carrying_capacity = max_supply_rate * population_size
+    midpoint = 50  # Arbitrary midpoint for logistic growth
 
-    def mask_policy(simulation: Simulation, person: Person) -> None:
-        if simulation.day >= start_day and not person.masked:
-            person.apply_mask()
+    if growth_type == "linear":
+        # Linearly increase supply each day up to the maximum supply rate
+        daily_supply = min(
+            initial_supply_rate * population_size + (day * 0.005 * population_size),
+            carrying_capacity,
+        )
+    elif growth_type == "exponential":
+        # Exponential increase to represent early rapid scaling of production
+        daily_supply = min(
+            initial_supply_rate * population_size * (1.05**day),
+            carrying_capacity,
+        )
+    elif growth_type == "logistic":
+        # Logistic growth: slow start, rapid increase, and then leveling off
+        growth_rate = 0.1  # Controls the steepness of the curve
+        daily_supply = carrying_capacity / (1 + exp(-growth_rate * (day - midpoint)))
+    else:
+        raise ValueError(
+            f"Unknown growth_type '{growth_type}'. Use 'linear', 'exponential', or 'logistic'."
+        )
 
-    return mask_policy
-
-
-def custom_distancing_policy_factory(
-    start_day: int,
-    compliance_rate: float,
-) -> Callable[[Simulation, Person], None]:
-    """
-    Factory function to create a custom social distancing policy.
-
-    Args:
-        start_day (int): The day the distancing policy starts.
-        compliance_rate (float): The probability that a person will practice social distancing.
-
-    Returns:
-        Callable[[Simulation, Person], None]: The distancing policy function.
-    """
-
-    def distancing_policy(simulation: Simulation, person: Person) -> None:
-        if simulation.day >= start_day and not person.social_distancing:
-            if simulation.random.random() < compliance_rate:
-                person.start_social_distancing()
-
-    return distancing_policy
+    return int(daily_supply)
