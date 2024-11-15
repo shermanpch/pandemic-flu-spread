@@ -7,6 +7,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import simpy
 
 from simulation import Simulation
@@ -194,7 +195,7 @@ class SimulationBatchRunner:
         save: bool = True,
         save_path: str = None,
         print_graphs: bool = True,
-    ) -> None:
+    ) -> pd.DataFrame:
         """
         Plot histograms of the aggregated metrics with statistical summaries.
 
@@ -205,12 +206,17 @@ class SimulationBatchRunner:
             save (bool): Whether to save the plot to a file.
             save_path (str): Path to save the plot.
             print_graphs (bool): Whether to display the plot.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the statistical summaries of the metrics.
         """
         metrics = metrics_to_plot if metrics_to_plot else self.aggregated_data.keys()
         num_metrics = len(metrics)
 
         nrows = math.ceil(num_metrics / ncols)
         plt.figure(figsize=(6 * ncols, 6 * nrows))
+
+        data = []
 
         for idx, metric in enumerate(metrics, 1):
             values = self.aggregated_data.get(metric, [])
@@ -245,7 +251,15 @@ class SimulationBatchRunner:
                 transform=plt.gca().transAxes,
                 bbox=props,
             )
-            
+
+            data.append({
+                "Metric": metric,
+                "Mean": mean_value,
+                "Median": median_value,
+                "Std Dev": std_dev,
+                "95% CI": conf_interval
+            })
+
         plt.tight_layout()
         if save:
             if save_path is None:
@@ -261,16 +275,24 @@ class SimulationBatchRunner:
         if print_graphs:
             plt.show()
 
+        return pd.DataFrame(data)
+
     def plot_state_over_time(
-            self,
-            save: bool = True,
-            save_path: str = None,
-            print_graphs: bool = True,
-    ) -> None:
+        self,
+        save: bool = True,
+        save_path: str = None,
+        print_graphs: bool = True,
+    ) -> pd.DataFrame:
         """Plot the mean number of individuals in each state over time, each state in a separate subplot.
+        
+        Args:
             save (bool): Whether to save the plot to a file.
             save_path (str): Path to save the plot.
-            print_graphs (bool): Whether to display the plot."""
+            print_graphs (bool): Whether to display the plot.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the mean and std dev of individuals in each state over time.
+        """
         if not self.daily_expected_counts:
             logger.warning(
                 "No daily expected counts found. Please run the simulations first."
@@ -285,6 +307,8 @@ class SimulationBatchRunner:
         nrows = math.ceil(num_states / ncols)
 
         plt.figure(figsize=(6 * ncols, 4 * nrows))
+
+        data = []
 
         for idx, state in enumerate(states, 1):
             means = [day_data[state]["mean"] for day_data in self.daily_expected_counts]
@@ -311,6 +335,14 @@ class SimulationBatchRunner:
             plt.title(f"Daily Expected Number of {state.replace('_', ' ').title()}")
             plt.grid(True)
 
+            for day, mean, std in zip(days, means, stds):
+                data.append({
+                    "State": state,
+                    "Day": day,
+                    "Mean": mean,
+                    "Std Dev": std
+                })
+
         plt.tight_layout()
         if save:
             if save_path is None:
@@ -323,5 +355,7 @@ class SimulationBatchRunner:
         else:
             # Process the data without saving
             print("Processing data without saving")
-        if print_graphs:            
+        if print_graphs:
             plt.show()
+
+        return pd.DataFrame(data)
