@@ -190,11 +190,12 @@ class SimulationBatchRunner:
     def plot_histograms(
         self,
         metrics_to_plot: List[str] = None,
-        ncols: int = 3,
+        ncols: int = 2,
         color: str = "skyblue",
         save: bool = True,
         save_path: str = None,
         print_graphs: bool = True,
+        title: str = None,
     ) -> pd.DataFrame:
         """
         Plot histograms of the aggregated metrics with statistical summaries.
@@ -206,6 +207,7 @@ class SimulationBatchRunner:
             save (bool): Whether to save the plot to a file.
             save_path (str): Path to save the plot.
             print_graphs (bool): Whether to display the plot.
+            title (str): Title of the plot.
 
         Returns:
             pd.DataFrame: DataFrame containing the statistical summaries of the metrics.
@@ -266,6 +268,9 @@ class SimulationBatchRunner:
                 raise ValueError("save_path must be provided if save is True")
             # Ensure the directory exists
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            # Add title to the saved plot
+            plt.suptitle(title, fontsize=16, fontweight='bold')
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
             # Save the data to the specified path
             plt.savefig(save_path)
             print(f"Histogram saved to {save_path}")
@@ -282,6 +287,7 @@ class SimulationBatchRunner:
         save: bool = True,
         save_path: str = None,
         print_graphs: bool = True,
+        title: str = None,
     ) -> pd.DataFrame:
         """Plot the mean number of individuals in each state over time, each state in a separate subplot.
         
@@ -289,6 +295,7 @@ class SimulationBatchRunner:
             save (bool): Whether to save the plot to a file.
             save_path (str): Path to save the plot.
             print_graphs (bool): Whether to display the plot.
+            title (str): Title of the plot.
 
         Returns:
             pd.DataFrame: DataFrame containing the mean and std dev of individuals in each state over time.
@@ -303,7 +310,7 @@ class SimulationBatchRunner:
         states = self.daily_expected_counts[-1].keys()
 
         num_states = len(states)
-        ncols = min(num_states, 3)
+        ncols = min(num_states, 2)
         nrows = math.ceil(num_states / ncols)
 
         plt.figure(figsize=(6 * ncols, 4 * nrows))
@@ -350,6 +357,9 @@ class SimulationBatchRunner:
             # Ensure the directory exists
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             # Save the data to the specified path
+            # Add title to the saved plot
+            plt.suptitle(title, fontsize=16, fontweight='bold')
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
             plt.savefig(save_path)
             print(f"State Over Time saved to {save_path}")
         else:
