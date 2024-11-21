@@ -129,3 +129,7 @@ cython_debug/
 # Windows specific files
 Thumbs.db
 ehthumbs.db
+
+# Specific folder
+results/
+analysis_results/

@@ -2,8 +2,8 @@ import copy
 import logging
 import math
 import multiprocessing
-from typing import Dict, List
 import os
+from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -146,14 +146,17 @@ class SimulationBatchRunner:
         # List of metric names to aggregate
         metric_names = [
             "susceptible",
+            "immuned",
             "infected",
             "infectious",
             "recovered",
             "dead",
-            "vaccination",
-            "masking",
-            "cumulative_vaccinated",
+            "cumulative_vac_one",
+            "cumulative_vac_two",
             "cumulative_masked",
+            "vac_one",
+            "vac_two",
+            "masking",
             "vaccine_supply",
         ]
 
@@ -192,7 +195,6 @@ class SimulationBatchRunner:
         metrics_to_plot: List[str] = None,
         ncols: int = 2,
         color: str = "skyblue",
-        save: bool = True,
         save_path: str = None,
         print_graphs: bool = True,
         title: str = None,
@@ -254,118 +256,140 @@ class SimulationBatchRunner:
                 bbox=props,
             )
 
-            data.append({
-                "Metric": metric,
-                "Mean": mean_value,
-                "Median": median_value,
-                "Std Dev": std_dev,
-                "95% CI": conf_interval
-            })
+            data.append(
+                {
+                    "Metric": metric,
+                    "Mean": mean_value,
+                    "Median": median_value,
+                    "Std Dev": std_dev,
+                    "95% CI": conf_interval,
+                }
+            )
 
-        plt.tight_layout()
-        if save:
-            if save_path is None:
-                raise ValueError("save_path must be provided if save is True")
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            # Add title to the saved plot
-            plt.suptitle(title, fontsize=16, fontweight='bold')
-            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
+        # Add title to the saved plot
+        plt.suptitle(title, fontsize=16, fontweight="bold")
+        plt.tight_layout(rect=[0, 0, 1, 0.98])
+
+        if save_path is None:
             # Save the data to the specified path
             plt.savefig(save_path)
             print(f"Histogram saved to {save_path}")
         else:
             # Process the data without saving
             print("Processing data without saving")
+
+        # Show the plot if print_graphs is True
         if print_graphs:
             plt.show()
+        else:
+            plt.close()
 
         return pd.DataFrame(data)
 
     def plot_state_over_time(
         self,
-        save: bool = True,
         save_path: str = None,
         print_graphs: bool = True,
         title: str = None,
     ) -> pd.DataFrame:
-        """Plot the mean number of individuals in each state over time, each state in a separate subplot.
-        
+        """
+        Plot the mean number of individuals in each state over time, each state in a separate subplot.
+
         Args:
-            save (bool): Whether to save the plot to a file.
-            save_path (str): Path to save the plot.
+            save_path (str): Path to save the plot (optional).
             print_graphs (bool): Whether to display the plot.
-            title (str): Title of the plot.
+            title (str): Title of the overall plot (optional).
 
         Returns:
-            pd.DataFrame: DataFrame containing the mean and std dev of individuals in each state over time.
+            pd.DataFrame: DataFrame containing the mean and standard deviation of individuals in each state over time.
         """
         if not self.daily_expected_counts:
-            logger.warning(
+            import warnings
+
+            warnings.warn(
                 "No daily expected counts found. Please run the simulations first."
             )
-            return
+            return pd.DataFrame()
 
+        # Extract days and states dynamically
         days = range(len(self.daily_expected_counts))
-        states = self.daily_expected_counts[-1].keys()
+        available_states = self.daily_expected_counts[-1].keys()
 
-        num_states = len(states)
+        # Define state titles
+        title_map = {
+            "susceptible": " Expected Number of Susceptible Individuals as of Day X",
+            "immuned": "Expected Number of Immuned Individuals as of Day X",
+            "infected": "Expected Number of Infected Individuals as of Day X",
+            "infectious": "Expected Number of Infectious Individuals as of Day X",
+            "recovered": "Expected Number of Recovered Individuals as of Day X",
+            "dead": "Expected Number of Dead Individuals as of Day X",
+            "cumulative_vac_one": "Expected Number of Vaccinated Individuals (First Dose) as of Day X",
+            "cumulative_vac_two": "Number of Vaccinated Individuals (Second Dose) as of Day X",
+            "cumulative_masked": "Expected Number of Masked Individuals as of Day X",
+            "vac_one": "Expected Number of New Daily Vaccinated Individuals (First Dose)",
+            "vac_two": "Expected Number of New Daily Vaccinated Individuals (Second Dose)",
+            "masking": "Expected Number of New Daily Masked Individuals",
+            "vaccine_supply": "Number of New Daily Vaccine Doses",
+        }
+
+        # Filter title_map for only available states
+        filtered_title_map = {
+            key: title_map[key] for key in available_states if key in title_map
+        }
+
+        num_states = len(filtered_title_map)
         ncols = min(num_states, 2)
         nrows = math.ceil(num_states / ncols)
 
+        # Set figure size dynamically based on the number of states
         plt.figure(figsize=(6 * ncols, 4 * nrows))
+        plt.subplots_adjust(hspace=0.4, wspace=0.3)
 
         data = []
 
-        for idx, state in enumerate(states, 1):
+        for idx, (state, state_title) in enumerate(filtered_title_map.items(), 1):
             means = [day_data[state]["mean"] for day_data in self.daily_expected_counts]
             stds = [day_data[state]["std"] for day_data in self.daily_expected_counts]
+
             means = np.array(means)
             stds = np.array(stds)
 
-            plt.subplot(nrows, ncols, idx)
-            plt.plot(
-                days,
-                means,
-                label=f"{state.replace('_', ' ').title()}",
-                color="blue",
-            )
-            plt.fill_between(
+            # Plot each state
+            ax = plt.subplot(nrows, ncols, idx)
+            ax.plot(days, means, label=state.replace("_", " ").title(), color="blue")
+            ax.fill_between(
                 days,
                 np.clip(means - stds, a_min=0, a_max=None),
                 means + stds,
                 color="blue",
                 alpha=0.2,
             )
-            plt.xlabel("Day")
-            plt.ylabel("Number of Individuals")
-            plt.title(f"Daily Expected Number of {state.replace('_', ' ').title()}")
-            plt.grid(True)
+            ax.set_xlabel("Day")
+            ax.set_ylabel("Number of Individuals")
+            ax.set_title(state_title)
+            ax.grid(True)
 
-            for day, mean, std in zip(days, means, stds):
-                data.append({
-                    "State": state,
-                    "Day": day,
-                    "Mean": mean,
-                    "Std Dev": std
-                })
+            # Append data for the DataFrame
+            data.extend(
+                {"State": state, "Day": day, "Mean": mean, "Std Dev": std}
+                for day, mean, std in zip(days, means, stds)
+            )
 
-        plt.tight_layout()
-        if save:
-            if save_path is None:
-                raise ValueError("save_path must be provided if save is True")
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            # Save the data to the specified path
-            # Add title to the saved plot
-            plt.suptitle(title, fontsize=16, fontweight='bold')
-            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
-            plt.savefig(save_path)
-            print(f"State Over Time saved to {save_path}")
-        else:
-            # Process the data without saving
-            print("Processing data without saving")
+        # Add an overall title if provided
+        if title:
+            plt.suptitle(title, fontsize=16, fontweight="bold")
+            plt.tight_layout(rect=[0, 0, 1, 0.98])
+
+        # Save the plot if save_path is provided
+        if save_path:
+            plt.savefig(save_path, bbox_inches="tight")
+            print(f"Plot saved to {save_path}")
+
+        # Show the plot if print_graphs is True
         if print_graphs:
             plt.show()
+        else:
+            plt.close()
 
+        # Return the DataFrame with the computed data
         return pd.DataFrame(data)

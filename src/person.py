@@ -4,6 +4,7 @@ from enum import Enum
 
 class HealthState(Enum):
     SUSCEPTIBLE = "susceptible"
+    IMMUNED = "immuned"
     INFECTED = "infected"
     INFECTIOUS = "infectious"
     RECOVERED = "recovered"
@@ -33,6 +34,11 @@ class Person:
     def is_susceptible(self) -> bool:
         """Check if the person is susceptible."""
         return self.state == HealthState.SUSCEPTIBLE
+
+    @property
+    def is_immuned(self) -> bool:
+        """Check if the person is immune."""
+        return self.state == HealthState.IMMUNED
 
     @property
     def is_infected(self) -> bool:
@@ -97,6 +103,9 @@ class Person:
         """
         self.vaccination_doses += doses
         self.vaccination_doses = min(self.vaccination_doses, self.MAX_VACCINATION_DOSES)
+
+        if self.vaccination_doses == 2:
+            self.state = HealthState.IMMUNED
 
     def apply_mask(self) -> None:
         """Set the person's masked status to True."""
