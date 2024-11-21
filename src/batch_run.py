@@ -3,9 +3,11 @@ import logging
 import math
 import multiprocessing
 from typing import Dict, List
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import simpy
 
 from simulation import Simulation
@@ -188,9 +190,13 @@ class SimulationBatchRunner:
     def plot_histograms(
         self,
         metrics_to_plot: List[str] = None,
-        ncols: int = 3,
+        ncols: int = 2,
         color: str = "skyblue",
-    ) -> None:
+        save: bool = True,
+        save_path: str = None,
+        print_graphs: bool = True,
+        title: str = None,
+    ) -> pd.DataFrame:
         """
         Plot histograms of the aggregated metrics with statistical summaries.
 
@@ -198,12 +204,21 @@ class SimulationBatchRunner:
             metrics_to_plot (List[str], optional): The metrics to plot. If None, plot all available metrics.
             ncols (int): Number of columns in the plot grid.
             color (str): Color of the histogram bars.
+            save (bool): Whether to save the plot to a file.
+            save_path (str): Path to save the plot.
+            print_graphs (bool): Whether to display the plot.
+            title (str): Title of the plot.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the statistical summaries of the metrics.
         """
         metrics = metrics_to_plot if metrics_to_plot else self.aggregated_data.keys()
         num_metrics = len(metrics)
 
         nrows = math.ceil(num_metrics / ncols)
         plt.figure(figsize=(6 * ncols, 6 * nrows))
+
+        data = []
 
         for idx, metric in enumerate(metrics, 1):
             values = self.aggregated_data.get(metric, [])
@@ -239,11 +254,52 @@ class SimulationBatchRunner:
                 bbox=props,
             )
 
-        plt.tight_layout()
-        plt.show()
+            data.append({
+                "Metric": metric,
+                "Mean": mean_value,
+                "Median": median_value,
+                "Std Dev": std_dev,
+                "95% CI": conf_interval
+            })
 
-    def plot_state_over_time(self) -> None:
-        """Plot the mean number of individuals in each state over time, each state in a separate subplot."""
+        plt.tight_layout()
+        if save:
+            if save_path is None:
+                raise ValueError("save_path must be provided if save is True")
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            # Add title to the saved plot
+            plt.suptitle(title, fontsize=16, fontweight='bold')
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
+            # Save the data to the specified path
+            plt.savefig(save_path)
+            print(f"Histogram saved to {save_path}")
+        else:
+            # Process the data without saving
+            print("Processing data without saving")
+        if print_graphs:
+            plt.show()
+
+        return pd.DataFrame(data)
+
+    def plot_state_over_time(
+        self,
+        save: bool = True,
+        save_path: str = None,
+        print_graphs: bool = True,
+        title: str = None,
+    ) -> pd.DataFrame:
+        """Plot the mean number of individuals in each state over time, each state in a separate subplot.
+        
+        Args:
+            save (bool): Whether to save the plot to a file.
+            save_path (str): Path to save the plot.
+            print_graphs (bool): Whether to display the plot.
+            title (str): Title of the plot.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the mean and std dev of individuals in each state over time.
+        """
         if not self.daily_expected_counts:
             logger.warning(
                 "No daily expected counts found. Please run the simulations first."
@@ -254,10 +310,12 @@ class SimulationBatchRunner:
         states = self.daily_expected_counts[-1].keys()
 
         num_states = len(states)
-        ncols = min(num_states, 3)
+        ncols = min(num_states, 2)
         nrows = math.ceil(num_states / ncols)
 
         plt.figure(figsize=(6 * ncols, 4 * nrows))
+
+        data = []
 
         for idx, state in enumerate(states, 1):
             means = [day_data[state]["mean"] for day_data in self.daily_expected_counts]
@@ -284,5 +342,30 @@ class SimulationBatchRunner:
             plt.title(f"Daily Expected Number of {state.replace('_', ' ').title()}")
             plt.grid(True)
 
+            for day, mean, std in zip(days, means, stds):
+                data.append({
+                    "State": state,
+                    "Day": day,
+                    "Mean": mean,
+                    "Std Dev": std
+                })
+
         plt.tight_layout()
-        plt.show()
+        if save:
+            if save_path is None:
+                raise ValueError("save_path must be provided if save is True")
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            # Save the data to the specified path
+            # Add title to the saved plot
+            plt.suptitle(title, fontsize=16, fontweight='bold')
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust the rect parameter as needed
+            plt.savefig(save_path)
+            print(f"State Over Time saved to {save_path}")
+        else:
+            # Process the data without saving
+            print("Processing data without saving")
+        if print_graphs:
+            plt.show()
+
+        return pd.DataFrame(data)
