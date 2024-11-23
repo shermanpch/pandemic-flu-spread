@@ -146,7 +146,7 @@ class SimulationBatchRunner:
         # List of metric names to aggregate
         metric_names = [
             "susceptible",
-            "immuned",
+            "immune",
             "infected",
             "infectious",
             "recovered",
@@ -270,7 +270,7 @@ class SimulationBatchRunner:
         plt.suptitle(title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 1, 0.98])
 
-        if save_path is None:
+        if save_path:
             # Save the data to the specified path
             plt.savefig(save_path)
             print(f"Histogram saved to {save_path}")
@@ -318,7 +318,7 @@ class SimulationBatchRunner:
         # Define state titles
         title_map = {
             "susceptible": " Expected Number of Susceptible Individuals as of Day X",
-            "immuned": "Expected Number of Immuned Individuals as of Day X",
+            "immune": "Expected Number of Immune Individuals as of Day X",
             "infected": "Expected Number of Infected Individuals as of Day X",
             "infectious": "Expected Number of Infectious Individuals as of Day X",
             "recovered": "Expected Number of Recovered Individuals as of Day X",
