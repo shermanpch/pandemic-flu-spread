@@ -324,7 +324,7 @@ class SimulationBatchRunner:
             "recovered": "Expected Number of Recovered Individuals as of Day X",
             "dead": "Expected Number of Dead Individuals as of Day X",
             "cumulative_vac_one": "Expected Number of Vaccinated Individuals (First Dose) as of Day X",
-            "cumulative_vac_two": "Number of Vaccinated Individuals (Second Dose) as of Day X",
+            "cumulative_vac_two": "Expected Number of Vaccinated Individuals (Second Dose) as of Day X",
             "cumulative_masked": "Expected Number of Masked Individuals as of Day X",
             "vac_one": "Expected Number of New Daily Vaccinated Individuals (First Dose)",
             "vac_two": "Expected Number of New Daily Vaccinated Individuals (Second Dose)",
