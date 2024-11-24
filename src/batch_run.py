@@ -3,18 +3,25 @@ import logging
 import math
 import multiprocessing
 import os
+import sys
 from typing import Dict, List
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import simpy
-
 from simulation import Simulation
 from stats import StatisticsCollector
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Log to console
+    ],
+)
+
 logger = logging.getLogger(__name__)
 
 

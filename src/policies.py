@@ -1,11 +1,19 @@
 import logging
 import math
+import sys
 
 from person import Person
 from simulation import Simulation
 
-# Configure logging for policy actions
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Log to console
+    ],
+)
+
 logger = logging.getLogger(__name__)
 
 
