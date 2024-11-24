@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import simpy
+
 from simulation import Simulation
 from stats import StatisticsCollector
 
@@ -273,19 +274,15 @@ class SimulationBatchRunner:
                 }
             )
 
-        # Add title to the saved plot
         plt.suptitle(title, fontsize=16, fontweight="bold")
         plt.tight_layout(rect=[0, 0, 1, 0.98])
 
         if save_path:
-            # Save the data to the specified path
             plt.savefig(save_path)
-            print(f"Histogram saved to {save_path}")
+            logger.info(f"Histogram saved to {save_path}")
         else:
-            # Process the data without saving
-            print("Processing data without saving")
+            logger.info("Processing data without saving")
 
-        # Show the plot if print_graphs is True
         if print_graphs:
             plt.show()
         else:
@@ -390,7 +387,7 @@ class SimulationBatchRunner:
         # Save the plot if save_path is provided
         if save_path:
             plt.savefig(save_path, bbox_inches="tight")
-            print(f"Plot saved to {save_path}")
+            logger.info(f"Plot saved to {save_path}")
 
         # Show the plot if print_graphs is True
         if print_graphs:
