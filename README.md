@@ -35,7 +35,7 @@ The project includes the following components:
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/pandemic-flu-spread.git
+   git clone https://github.com/shermanpch/pandemic-flu-spread.git
    cd pandemic-flu-spread
    ```
 
