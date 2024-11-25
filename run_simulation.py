@@ -112,6 +112,7 @@ def run_simulation(debug=False):
                 * len(social_distancing_start_days)
             )
         ) * 100
+
         logger.info(f"Percent complete: {percent_complete:.2f}%")
 
         loading_tracker += 1
@@ -164,6 +165,7 @@ def run_simulation(debug=False):
             results_dir,
             f"ir{infection_rate}_ms{mask_start_day}_sds{social_distancing_start_day}_hist.png",
         )
+
         state_save_path = os.path.join(
             results_dir,
             f"ir{infection_rate}_ms{mask_start_day}_sds{social_distancing_start_day}_state.png",
@@ -214,6 +216,115 @@ def run_simulation(debug=False):
     state_over_time_results_df.to_excel(
         os.path.join(results_dir, "state_over_time_results.xlsx"),
         index=False,
+    )
+
+    # Additional run to simulation no mask, no social distancing and no vaccination
+    MASK_POLICY = partial(
+        mask_policy,
+        start_day=9999,
+        max_prob_mask=0.8,
+        growth_rate=0.05,
+    )
+
+    SOCIAL_DIST_POLICY = partial(
+        social_distancing_policy,
+        start_day=9999,
+    )
+
+    VAC_POLICY = partial(
+        supply_constrained_vaccination_policy,
+        initial_supply_rate=0,
+        max_supply_rate=0,
+        growth_type="logistic",
+    )
+
+    # Define simulation parameters
+    simulation_params = {
+        "population_size": 10_000,  # Total number of individuals in the simulation.
+        "initial_infected": 0.01,  # Initial infected individuals in the simulation.
+        # If an integer, this specifies the absolute number of infected individuals at the start.
+        # If a float between 0 and 1, it represents the fraction of the population that is initially infected.
+        "infection_rate": 0.4,  # Base probability of infection per contact (0 <= infection_rate <= 1).
+        # Higher values mean more likely transmission on each contact.
+        "incubation_period": 7,  # Number of days from infection until an individual becomes infectious.
+        # This delay represents the period during which the individual is infected but not yet able to spread the disease.
+        "infectious_period": 14,  # Number of days an individual remains infectious once they become infectious.
+        # After this period, the individual either recovers or dies.
+        "base_contacts": 10,  # Average number of daily contacts for individuals who are not social distancing.
+        # This is the number of interactions per day where infection could potentially spread.
+        "social_distancing_rate": 0.3,  # Factor to reduce the number of contacts for individuals practicing social distancing (0 <= social_distancing_rate <= 1).
+        # A rate of 0.3 means social distancing reduces contacts to 30% of the base contacts.
+        "mortality_rate": 0.01,  # Probability of dying from the disease for infected individuals (0 <= mortality_rate <= 1).
+        # A rate of 0.01 implies a 1% chance of death for each infected individual.
+        "mask_effectiveness": 0.5,  # Effectiveness of masks in reducing infection probability.
+        # If an individual wears a mask, the infection rate for that contact is multiplied by this factor.
+        # For example, a value of 0.5 means masks reduce the infection risk by 50%.
+        "partial_vaccine_effectiveness": 0.5,  # Effectiveness of a single vaccine dose in reducing infection probability.
+        # The infection rate is multiplied by this factor for individuals with partial vaccination.
+        # For example, 0.5 means partial vaccination reduces the infection risk by 50%.
+        "full_vaccine_effectiveness": 0,  # Effectiveness of full vaccination (two or more doses) in reducing infection probability.
+        # The infection rate is multiplied by this factor for fully vaccinated individuals.
+        # A value of 0 implies complete immunity, with no risk of infection after full vaccination.
+        "mask_policy": MASK_POLICY,  # Function that defines the mask-wearing policy for individuals.
+        # This function is invoked daily to decide whether each individual should wear a mask.
+        "dist_policy": SOCIAL_DIST_POLICY,  # Function that defines the social distancing policy for individuals.
+        # This function is invoked daily to determine each individual’s social distancing behavior.
+        "vac_policy": VAC_POLICY,  # Function that defines the vaccination policy for the simulation.
+        # This function is called daily to decide which individuals receive vaccine doses.
+        "random_seed": 42,  # Seed for the random number generator, ensuring reproducibility of the simulation.
+        # Setting this seed allows the simulation to produce the same results on repeated runs.
+    }
+
+    # Number of simulation runs
+    replications = 100
+
+    # Create the SimulationBatchRunner
+    batch_runner = SimulationBatchRunner(
+        replications=replications,
+        simulation_params=simulation_params,
+    )
+
+    # Run all simulations
+    batch_runner.run()
+
+    # Define the path to save the results
+    hist_save_path = os.path.join(
+        results_dir,
+        f"ir{0.4}_ms{9999}_sds{9999}_hist.png",
+    )
+
+    state_save_path = os.path.join(
+        results_dir,
+        f"ir{0.4}_ms{9999}_sds{9999}_state.png",
+    )
+
+    # Titles for the plots
+    title_hist = (
+        f"Statistical Summary\n"
+        f"Infection Rate: {0.4}\n"
+        f"Mask Start Day: None\n"
+        f"Social Distancing Start Day: None"
+    )
+
+    title_state = (
+        f"State Over Time\n"
+        f"Infection Rate: {0.4}\n"
+        f"Mask Start Day: None\n"
+        f"Social Distancing Start Day: None"
+    )
+
+    # Plot histograms with statistical summaries and save results
+    batch_runner.plot_histograms(
+        save_path=hist_save_path,
+        print_graphs=False,
+        title=title_hist,
+    )
+
+    # Plot the expected counts over time and save results
+    batch_runner.plot_state_over_time(
+        save_path=state_save_path,
+        print_graphs=False,
+        title=title_state,
     )
 
 

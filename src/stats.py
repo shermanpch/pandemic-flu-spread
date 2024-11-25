@@ -1,7 +1,6 @@
 from typing import Dict, List, Set
 
 import matplotlib.pyplot as plt
-
 from person import Person
 
 
@@ -14,7 +13,7 @@ class StatisticsCollector:
         """Initialize a new StatisticsCollector instance."""
         self.days: List[int] = []
         self.susceptible_counts: List[int] = []
-        self.immuned_counts: List[int] = []
+        self.immune_counts: List[int] = []
         self.infected_counts: List[int] = []
         self.infectious_counts: List[int] = []
         self.recovered_counts: List[int] = []
@@ -45,7 +44,7 @@ class StatisticsCollector:
         # Initialize counts
         daily_counts = {
             "susceptible": 0,
-            "immuned": 0,
+            "immune": 0,
             "infected": 0,
             "infectious": 0,
             "recovered": 0,
@@ -80,7 +79,7 @@ class StatisticsCollector:
         # Update the class attributes with counts
         self.days.append(day)
         self.susceptible_counts.append(daily_counts["susceptible"])
-        self.immuned_counts.append(daily_counts["immuned"])
+        self.immune_counts.append(daily_counts["immune"])
         self.infected_counts.append(daily_counts["infected"])
         self.infectious_counts.append(daily_counts["infectious"])
         self.recovered_counts.append(daily_counts["recovered"])
@@ -146,7 +145,7 @@ class StatisticsCollector:
 
         metric_map = {
             "susceptible": self.susceptible_counts,
-            "immuned": self.immuned_counts,
+            "immune": self.immune_counts,
             "infected": self.infected_counts,
             "infectious": self.infectious_counts,
             "recovered": self.recovered_counts,
@@ -162,7 +161,7 @@ class StatisticsCollector:
 
         title_map = {
             "susceptible": "Number of Susceptible Individuals as of Day X",
-            "immuned": "Number of Immuned Individuals as of Day X",
+            "immune": "Number of Immune Individuals as of Day X",
             "infected": "Number of Infected Individuals as of Day X",
             "infectious": "Number of Infectious Individuals as of Day X",
             "recovered": "Number of Recovered Individuals as of Day X",
